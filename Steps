@@ -1,0 +1,187 @@
+Build and Evaluate a Simple User Authentication System
+Steps
+1. Create the User Registration System. (7pts)
+Vue Component (Register.vue):
+<template>
+  <div>
+    <form @submit.prevent="register">
+      <input type="text" v-model="name" placeholder="Name" required>
+      <input type="email" v-model="email" placeholder="Email" required>
+      <input type="password" v-model="password" placeholder="Password" required>
+      <button type="submit">Register</button>
+    </form>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      name: '',
+      email: '',
+      password: ''
+    }
+  },
+  methods: {
+    async register() {
+      try {
+        await axios.post('/api/register', {
+          name: this.name,
+          email: this.email,
+          password: this.password
+        });
+        alert('Registration successful');
+      } catch {
+        alert('Registration failed');
+      }
+    }
+  }
+}
+</script>
+
+Laravel Controller (AuthController.php):
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use App\Models\User;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+
+class AuthController extends Controller
+{
+    public function register(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'name' => 'required|string|max:255',
+            'email' => 'required|string|email|max:255|unique:users',
+            'password' => 'required|string|min:8',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        User::create([
+            'name' => $request->name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+        ]);
+
+        return response()->json(['message' => 'User registered successfully'], 201);
+    }
+}
+
+2.Create the User Login System and Dashboard (7 points)
+
+Vue Component for Login (Login.vue):
+<template>
+  <div>
+    <form @submit.prevent="login">
+      <input type="email" v-model="email" placeholder="Email" required>
+      <input type="password" v-model="password" placeholder="Password" required>
+      <button type="submit">Login</button>
+    </form>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      email: '',
+      password: ''
+    }
+  },
+  methods: {
+    async login() {
+      try {
+        const response = await axios.post('/api/login', {
+          email: this.email,
+          password: this.password
+        });
+        localStorage.setItem('token', response.data.token);
+        this.$router.push('/dashboard');
+      } catch {
+        alert('Login failed');
+      }
+    }
+  }
+}
+</script>
+
+Vue Component for Dashboard (Dashboard.vue):
+<template>
+  <div>
+    <h1>Dashboard</h1>
+    <button @click="logout">Logout</button>
+  </div>
+</template>
+
+<script>
+export default {
+  methods: {
+    logout() {
+      localStorage.removeItem('token');
+      this.$router.push('/login');
+    }
+  }
+}
+</script>
+
+Vue Router Configuration (router.js):
+import Vue from 'vue';
+import Router from 'vue-router';
+import Login from './components/Login.vue';
+import Register from './components/Register.vue';
+import Dashboard from './components/Dashboard.vue';
+
+Vue.use(Router);
+
+const routes = [
+  { path: '/login', component: Login },
+  { path: '/register', component: Register },
+  { path: '/dashboard', component: Dashboard, meta: { requiresAuth: true } }
+];
+
+const router = new Router({ routes });
+
+router.beforeEach((to, from, next) => {
+  if (to.matched.some(record => record.meta.requiresAuth)) {
+    if (!localStorage.getItem('token')) {
+      next({ path: '/login' });
+    } else {
+      next();
+    }
+  } else {
+    next();
+  }
+});
+
+export default router;
+
+Laravel Controller for Login and User (AuthController.php):
+namespace App\Http\Controllers;
+
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+
+class AuthController extends Controller
+{
+    public function login(Request $request)
+    {
+        $credentials = $request->only('email', 'password');
+
+        if (Auth::attempt($credentials)) {
+            $token = Auth::user()->createToken('authToken')->accessToken;
+            return response()->json(['token' => $token], 200);
+        }
+
+        return response()->json(['message' => 'Invalid credentials'], 401);
+    }
+
+    public function user()
+    {
+        return response()->json(Auth::user(), 200);
+    }
+}
+
